@@ -1,0 +1,107 @@
+Require Import notations decidables Setoid Morphisms.
+Require Export vectors.
+Require Import List.
+
+Definition transp n := prod (fin n) (fin n).
+Definition perm n := list (transp n).
+
+Definition vect_transp {A n} (v: vect A n) (t: transp n) := vect_swap (fst t) (snd t) v.
+Definition vect_perm {A n} (p: perm n) (v: vect A n) := fold_left vect_transp p v.
+
+Definition transp_eq {n} (t1 t2: transp n) := forall A (v: vect A n), vect_eq (vect_transp v t1) (vect_transp v t2).
+Definition perm_eq {n} (p1 p2: perm n) := forall A (v: vect A n), vect_eq (vect_perm p1 v) (vect_perm p2 v).
+Definition perm_id n: perm n := nil.
+Definition perm_mult {n} (p1 p2: perm n): perm n := List.app p1 p2.
+Definition perm_inv {n} (p: perm n): perm n := List.rev p.
+
+
+Instance transp_eq_Equiv n: Equivalence (transp_eq (n:=n)).
+ split; unfold Reflexive, Symmetric, Transitive, transp_eq; intros;
+ [ reflexivity | symmetry | rewrite H ]; auto.
+Qed.
+Instance vect_transp_Proper A n: Proper (vect_eq ==> transp_eq ==> vect_eq) (vect_transp (A:=A) (n:=n)).
+ unfold Proper, respectful, transp_eq, vect_transp; intros; rewrite H; auto.
+Qed.
+
+Instance perm_eq_Equiv n: Equivalence (perm_eq (n:=n)).
+ split; unfold Reflexive, Symmetric, Transitive, perm_eq; intros;
+ [ reflexivity | symmetry | rewrite H ]; auto.
+Qed.
+Lemma const_vect_perm_Proper A n p: Proper (vect_eq ==> vect_eq) (vect_perm (A:=A) (n:=n) p).
+ induction p; intros v1 v2 ?.
+  auto.
+  simpl. pose proof vect_swap_Proper; unfold Proper, respectful, vect_transp in *. auto.
+Qed.
+Instance vect_perm_Proper A n: Proper (perm_eq ==> vect_eq ==> vect_eq) (vect_perm (A:=A) (n:=n)).
+ unfold Proper, respectful; intros.
+ pose proof const_vect_perm_Proper; unfold Proper, respectful in *; etransitivity; auto.
+Qed.
+
+Theorem perm_cons {n} (p: perm n) (t: transp n): perm_eq (t :: p) (perm_mult (t :: nil) p).
+ reflexivity.
+Qed.
+
+Theorem perm_mult_app {A n} (v: vect A n) (p1 p2: perm n): vect_perm (perm_mult p1 p2) v = vect_perm p2 (vect_perm p1 v).
+ apply fold_left_app.
+Qed.
+
+Instance perm_mult_Proper n: Proper (perm_eq ==> perm_eq ==> perm_eq) (perm_mult (n:=n)).
+ unfold Proper, respectful, perm_eq; intros.
+ do 2 rewrite perm_mult_app; rewrite H, H0; reflexivity.
+Qed.
+
+
+Inductive parity := even | odd.
+Definition change_parity p := match p with even => odd | odd => even end.
+Definition transp_is_id {n} (p: transp n) := eq_dec (fst p).1 (snd p).1.
+Definition perm_parity {n} (p: perm n) :=
+ List.fold_left (fun p t => if transp_is_id t then p else change_parity p) p even.
+
+
+Theorem twice_transp_is_id {n} (t: transp n): forall A (v: vect A n), vect_eq (vect_transp (vect_transp v t) t) v.
+ intros. unfold vect_transp. apply twice_vect_swap_is_id.
+Qed.
+
+Theorem perm_inv_proof {n} (p: perm n): perm_eq (perm_mult (perm_inv p) p) (perm_id n).
+ unfold perm_eq. intros.
+ induction p.
+  simpl; reflexivity.
+  simpl in *; unfold perm_mult, vect_perm in *; repeat rewrite fold_left_app in *; simpl;
+   rewrite twice_transp_is_id; auto.
+Qed.
+
+Definition T0 {A n} (v1 v2: vect A n) (t: transp n): vect_eq v1 (vect_transp v2 t) -> vect_eq (vect_transp v1 t) v2.
+ intro. rewrite H. rewrite twice_transp_is_id. reflexivity.
+Qed.
+
+Definition perm_inv_thm {A n} (v1 v2: vect A n) (p: perm n): vect_eq (vect_perm (perm_inv p) v1) v2 -> vect_eq v1 (vect_perm p v2).
+ intro. induction p.
+  simpl. auto.
+  rewrite <- H. simpl. unfold vect_perm in *. simpl in *. rewrite fold_left_app in *. simpl in *. rewrite twice_transp_is_id.
+   rewrite <- fold_left_app. assert (fold_left vect_transp (perm_inv p ++ p) v1 = vect_perm (perm_mult (perm_inv p) p) v1).
+    unfold perm_mult, vect_perm. auto.
+   rewrite H0. rewrite perm_inv_proof. reflexivity.
+Qed.
+
+Definition T1 {A n} (v1 v2: vect A n) (t: transp n): vect_eq (vect_transp v1 t) (vect_transp v2 t) -> vect_eq v1 v2.
+ intro. unfold vect_transp in *. rewrite <- (twice_transp_is_id t). rewrite <- (twice_transp_is_id t A v2).
+ rewrite H. reflexivity.
+Qed.
+
+Definition T2 {A n} (v1 v2: vect A n) (p: perm n): vect_eq (vect_perm p v1) (vect_perm p v2) -> vect_eq v1 v2.
+ revert v1 v2. induction p.
+  simpl in *. auto.
+  simpl in *. intros. apply IHp in H. apply T1 with (t:=a). auto.
+Qed.
+
+Instance perm_inv_Proper n: Proper (perm_eq ==> perm_eq) (perm_inv (n:=n)).
+ unfold Proper, respectful. intros.
+ unfold perm_inv, perm_eq in *. intros. 
+Admitted. 
+
+Theorem perm_mult_assoc {n} (p1 p2 p3: perm n):
+ perm_eq (perm_mult (perm_mult p1 p2) p3) (perm_mult p1 (perm_mult p2 p3)).
+unfold perm_eq, vect_eq, perm_mult; rewrite List.app_assoc; auto.
+Qed.
+
+
